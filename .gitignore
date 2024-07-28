@@ -2,3 +2,4 @@
 /runs/
 /results/
 /wandb/
+*.pyc
