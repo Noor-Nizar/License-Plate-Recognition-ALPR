@@ -6,7 +6,8 @@ import transformers
 import torch
 import os
 from tqdm import tqdm
-
+import numpy as np
+import jiwer
 
 from .dataset import get_dataset_loader
 from .logger_config import logger  
@@ -30,6 +31,7 @@ def predict(img_paths, detection_model, ocr_model, processor, device='cuda', max
     ''' inference pipeline for detection and OCR '''
     # Detection
     results = detection_model(img_paths)
+    logger.info(results[0].boxes)
     all_detections = [result.boxes.xyxy for result in results]
 
     _, dataloader = get_dataset_loader(img_paths, all_detections, batch_size=max_batch_size)
@@ -56,7 +58,7 @@ def predict(img_paths, detection_model, ocr_model, processor, device='cuda', max
     
     return results, ocr_results
 
-def inference_pipe(img_paths, device='cuda', return_cropped_images=False):
+def inference_pipe(img_paths, predict, device='cuda', return_cropped_images=False):
 
     # Load models
     logger.info("Loading detection model")
@@ -74,3 +76,43 @@ def inference_pipe(img_paths, device='cuda', return_cropped_images=False):
     logger.info("Inference completed")
 
     return output
+
+def predict_single_sample(img_paths, detection_model, ocr_model, processor, device='cuda', return_cropped_images=False):
+    ''' inference pipeline for detection and OCR, processing one sample at a time '''
+    ocr_results = []
+    cropped_images = []
+
+    for img_path in tqdm(img_paths):
+        # Detection
+        results = detection_model([img_path])
+        logger.info(results[0].boxes)
+        detections = results[0].boxes.xyxy.detach().cpu().numpy()
+
+        if len(detections) == 0:
+            ocr_results.append("no_detect")
+            continue
+
+        # Load image and crop based on detections
+        image = Image.open(img_path)  # Assuming you have a function to load the image
+        cropped_batch = [image.crop((x1, y1, x2, y2)) for x1, y1, x2, y2 in detections]
+        cropped_batch = [torch.tensor(np.array(cropped)) for cropped in cropped_batch]
+        if return_cropped_images:
+            cropped_images.extend(cropped_batch)
+
+        # OCR
+        for cropped_image in cropped_batch:
+            cropped_image = cropped_image.to(device)
+            with torch.no_grad():
+                pixel_values = processor(images=cropped_image, return_tensors="pt").pixel_values
+                pixel_values = pixel_values.to(device)
+                generated_ids = ocr_model.generate(pixel_values)
+                generated_text = processor.batch_decode(generated_ids, skip_special_tokens=True)
+                ocr_results.extend(generated_text)
+
+    if return_cropped_images:
+        return ocr_results, cropped_images
+
+    return ocr_results
+
+def character_error_rate(ground_truth, prediction):
+    return jiwer.cer(ground_truth, prediction)

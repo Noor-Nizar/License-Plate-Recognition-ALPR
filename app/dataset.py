@@ -19,33 +19,35 @@ class CustomDataset(Dataset):
     def __getitem__(self, idx):
         img_path = self.image_paths[idx]
         img = Image.open(img_path)
-        crops = []
-        for bbox in self.bboxes[idx]:
-            crop = img.crop(bbox.detach().cpu().numpy())
-            crop = self.pad_to_640(crop)
-            crops.append(crop)
+        logger.info(self.bboxes[idx])
+        img = img.crop(self.bboxes[idx][0].detach().cpu().numpy())
+        # crops = []
+        # for bbox in self.bboxes[idx]:
+        #     crop = img.crop(bbox.detach().cpu().numpy())
+        #     crop = self.pad_to_640(crop)
+        #     crops.append(crop)
         
-        return np.array(crops)
-        # img = numpy.array(img)
-        # #pad to 640x640
-        # h, w, _ = img.shape
-        # # logger.info(f"Image shape: {img.shape}")
-        # if h < 640:
-        #     pad = np.zeros((640-h, w, 3))
-        #     img = np.concatenate((img, pad), axis=0)
-        # if w < 640:
-        #     pad = np.zeros((640, 640-w, 3))
-        #     img = np.concatenate((img, pad), axis=1)
+        # return np.array(crops)
+        img = numpy.array(img)
+        #pad to 640x640
+        h, w, _ = img.shape
+        # logger.info(f"Image shape: {img.shape}")
+        if h < 640:
+            pad = np.zeros((640-h, w, 3))
+            img = np.concatenate((img, pad), axis=0)
+        if w < 640:
+            pad = np.zeros((640, 640-w, 3))
+            img = np.concatenate((img, pad), axis=1)
 
-        # # logger.info(f"Image shape: {img.shape}")
-        # return img
+        # logger.info(f"Image shape: {img.shape}")
+        return img
 
 def collate_fn(batch):
     ## concatenate on the first axis
     return np.concatenate(batch, axis=0)
 
 def get_dataset_loader(img_paths, bboxes, batch_size=8):
-    dataset = CustomDataset(img_paths, bboxes, collate_fn=collate_fn)
+    dataset = CustomDataset(img_paths, bboxes)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
     return dataset, dataloader
 
