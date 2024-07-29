@@ -7,6 +7,7 @@ import yaml
 from PIL import Image
 
 from .fomat_converters import normalized_coordinates
+from .logger_config import logger
 
 def extract_file_name(file_path):
     return os.path.splitext(os.path.basename(file_path))[0]
@@ -85,6 +86,9 @@ def apply_img_formatter(img_files):
 
 def make_splits(annots_path, imgs_path, train_ratio = 0.7, val_ratio = 0.15, log=True):
     # Shuffle the indices
+    annots_path = sorted(annots_path)
+    imgs_path = sorted(imgs_path)
+
     indices = np.arange(len(imgs_path))
     random.shuffle(indices)
 
@@ -108,11 +112,10 @@ def make_splits(annots_path, imgs_path, train_ratio = 0.7, val_ratio = 0.15, log
     test_annots_path = [annots_path[i] for i in test_indices]
     test_imgs_path = [imgs_path[i] for i in test_indices]
 
-    if log:
-        # Verify the splits
-        print(f"Number of training samples: {len(train_annots_path)}")
-        print(f"Number of validation samples: {len(val_annots_path)}")
-        print(f"Number of testing samples: {len(test_annots_path)}")
+    # Verify the splits
+    logger.info(f"Number of training samples: {len(train_annots_path)}")
+    logger.info(f"Number of validation samples: {len(val_annots_path)}")
+    logger.info(f"Number of testing samples: {len(test_annots_path)}")
     
     return train_annots_path, train_imgs_path, val_annots_path, val_imgs_path, test_annots_path, test_imgs_path
 
@@ -143,14 +146,12 @@ def copy_to_directories(train_annots_path, train_imgs_path, val_annots_path, val
     copy_files(test_imgs_path, os.path.join(base_dir, 'test/images'))
     copy_files(test_annots_path, os.path.join(base_dir, 'test/labels'))
 
-    if log:
-        # Verify the splits
-        print(f"Number of training images: {len(os.listdir(os.path.join(base_dir, 'train/images')))}")
-        print(f"Number of training labels: {len(os.listdir(os.path.join(base_dir, 'train/labels')))}")
-        print(f"Number of validation images: {len(os.listdir(os.path.join(base_dir, 'val/images')))}")
-        print(f"Number of validation labels: {len(os.listdir(os.path.join(base_dir, 'val/labels')))}")
-        print(f"Number of testing images: {len(os.listdir(os.path.join(base_dir, 'test/images')))}")
-        print(f"Number of testing labels: {len(os.listdir(os.path.join(base_dir, 'test/labels')))}")
+    logger.info(f"Number of training images: {len(os.listdir(os.path.join(base_dir, 'train/images')))}")
+    logger.info(f"Number of training labels: {len(os.listdir(os.path.join(base_dir, 'train/labels')))}")
+    logger.info(f"Number of validation images: {len(os.listdir(os.path.join(base_dir, 'val/images')))}")
+    logger.info(f"Number of validation labels: {len(os.listdir(os.path.join(base_dir, 'val/labels')))}")
+    logger.info(f"Number of testing images: {len(os.listdir(os.path.join(base_dir, 'test/images')))}")
+    logger.info(f"Number of testing labels: {len(os.listdir(os.path.join(base_dir, 'test/labels')))}")
 
 
 # Function to create a data.yaml file
@@ -175,7 +176,7 @@ def create_data_yaml(log=True):
         # Verify the data.yaml file content
         with open(os.path.join(dir_path, 'data.yaml'), 'r') as file:
             data_yaml_content = yaml.safe_load(file)
-            print(data_yaml_content)
+            logger.info(data_yaml_content)
 
 
 def pipeline():
@@ -192,7 +193,7 @@ def pipeline():
     annot_files = apply_label_formatter(annots_path, imgs_path)
     
     ## Resize the images to 640x640
-    imgs_path = apply_img_formatter(imgs_path)
+    # imgs_path = apply_img_formatter(imgs_path)
 
     # Make the splits
     train_annots_path, train_imgs_path, val_annots_path, val_imgs_path, test_annots_path, test_imgs_path = make_splits(annot_files, imgs_path)

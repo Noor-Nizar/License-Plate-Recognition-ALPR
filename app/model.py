@@ -8,6 +8,9 @@ import os
 from tqdm import tqdm
 import numpy as np
 import jiwer
+import easyocr
+
+# import easyocr
 
 from .dataset import get_dataset_loader
 from .logger_config import logger  
@@ -26,12 +29,41 @@ def get_ocr(path=None):
     model_ocr = VisionEncoderDecoderModel.from_pretrained('microsoft/trocr-base-printed')
     return processor, model_ocr
 
+class ocr_easy_interface:
+    def __init__(self, *args, **kwargs):
+        self.reader = easyocr.Reader(['en'])
 
-def predict(img_paths, detection_model, ocr_model, processor, device='cuda', max_batch_size=32, return_cropped_images=False):
+    def ocr(self, temp_path, *args, **kwargs):
+        outs = self.reader.readtext(temp_path)
+        if len(outs) == 0:
+            return ["no_detect"]
+        logger.debug(outs)
+        confs = [out[-1] for out in outs]
+        arg_max_conf = np.argmax(confs)
+        return [outs[arg_max_conf][-2]]
+        
+class ocr_llm_interface:
+    def __init__(self, processor, ocr_model, device):
+        self.processor = processor
+        self.ocr_model = ocr_model
+        self.device = device
+
+    def ocr(self, cropped_image, *args, **kwargs):
+        # returns = []
+        with torch.no_grad():
+            pixel_values = self.processor(images=cropped_image, return_tensors="pt").pixel_values
+            pixel_values = pixel_values.to(self.device)
+            generated_ids = self.ocr_model.generate(pixel_values)
+            generated_text = self.processor.batch_decode(generated_ids, skip_special_tokens=True)
+            # print("OCR results: ", generated_text)
+            return generated_text
+
+def predict(img_paths, detection_model, ocr_model_interface,
+             device='cuda', max_batch_size=32, return_cropped_images=False):
     ''' inference pipeline for detection and OCR '''
     # Detection
     results = detection_model(img_paths)
-    logger.info(results[0].boxes)
+    logger.debug(results[0].boxes)
     all_detections = [result.boxes.xyxy for result in results]
 
     _, dataloader = get_dataset_loader(img_paths, all_detections, batch_size=max_batch_size)
@@ -44,21 +76,18 @@ def predict(img_paths, detection_model, ocr_model, processor, device='cuda', max
         batch = batch.to(device)
         if return_cropped_images:
             cropped_images.extend(batch)
-        # logger.info(f"Batch shape: {batch.shape}")
+        # logger.info(f"Batch shape: {batcsh.shape}")
         # print(ocr_model.device, batch.device)
-        with torch.no_grad():
-            pixel_values = processor(images=batch, return_tensors="pt").pixel_values
-            pixel_values = pixel_values.to(device)
-            generated_ids = ocr_model.generate(pixel_values)
-            generated_text = processor.batch_decode(generated_ids, skip_special_tokens=True)
-            ocr_results.extend(generated_text)
+        ocr_out = ocr_model_interface(cropped_images)
+        ocr_results.extend(ocr_out)
+        
     
     if return_cropped_images:
         return results, ocr_results, cropped_images
     
     return results, ocr_results
 
-def inference_pipe(img_paths, predict, device='cuda', return_cropped_images=False):
+def inference_pipe(img_paths, predict, ocr_interface_, device='cuda', return_cropped_images=False):
 
     # Load models
     logger.info("Loading detection model")
@@ -67,17 +96,19 @@ def inference_pipe(img_paths, predict, device='cuda', return_cropped_images=Fals
 
     logger.info("Loading OCR model and processor")
     processor, ocr_model = get_ocr()
+    ocr_interface = ocr_interface_(processor, ocr_model, device)
+    logger.info("OCR model loaded")
     ocr_model = ocr_model.to(device)
     logger.info("OCR model and processor loaded and moved to device")
 
     # Run inference
     logger.info("Running inference")
-    output = predict(img_paths, detection_model, ocr_model, processor, return_cropped_images=return_cropped_images)
+    output = predict(img_paths, detection_model, ocr_interface, device=device, return_cropped_images=return_cropped_images)
     logger.info("Inference completed")
 
     return output
 
-def predict_single_sample(img_paths, detection_model, ocr_model, processor, device='cuda', return_cropped_images=False):
+def predict_single_sample(img_paths, detection_model, ocr_model_interface, device='cuda', return_cropped_images=False):
     ''' inference pipeline for detection and OCR, processing one sample at a time '''
     ocr_results = []
     cropped_images = []
@@ -85,12 +116,14 @@ def predict_single_sample(img_paths, detection_model, ocr_model, processor, devi
     for img_path in tqdm(img_paths):
         # Detection
         results = detection_model([img_path])
-        logger.info(results[0].boxes)
+        logger.debug(results[0].boxes)
         detections = results[0].boxes.xyxy.detach().cpu().numpy()
-
+        ## take bounding box with the highest confidence
         if len(detections) == 0:
             ocr_results.append("no_detect")
             continue
+        
+        detections = detections[np.argmax(detections[:, -1])].reshape(1, -1)
 
         # Load image and crop based on detections
         image = Image.open(img_path)  # Assuming you have a function to load the image
@@ -102,12 +135,15 @@ def predict_single_sample(img_paths, detection_model, ocr_model, processor, devi
         # OCR
         for cropped_image in cropped_batch:
             cropped_image = cropped_image.to(device)
-            with torch.no_grad():
-                pixel_values = processor(images=cropped_image, return_tensors="pt").pixel_values
-                pixel_values = pixel_values.to(device)
-                generated_ids = ocr_model.generate(pixel_values)
-                generated_text = processor.batch_decode(generated_ids, skip_special_tokens=True)
-                ocr_results.extend(generated_text)
+            ## create temp directory and store cropped images then pass the temp path to the model aswell
+            temp_dir = "temp"
+            os.makedirs(temp_dir, exist_ok=True)
+            temp_path = os.path.join(temp_dir, "cropped_image.jpg")
+            Image.fromarray(cropped_image.numpy()).save(temp_path)
+            ocr_out = ocr_model_interface.ocr(cropped_image=cropped_image, temp_path=temp_path)
+            ocr_results.extend(ocr_out)
+            ## delete the .jpg file
+            # os.remove(temp_path)
 
     if return_cropped_images:
         return ocr_results, cropped_images
