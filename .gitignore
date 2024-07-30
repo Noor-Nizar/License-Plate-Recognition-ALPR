@@ -1,0 +1,6 @@
+/data/
+/runs/
+/results/
+/wandb/
+*.pyc
+/models/
