@@ -110,17 +110,18 @@ def inference_pipe(img_paths, predict, ocr_interface_, device='cuda', return_cro
 
 def predict_single_sample(img_paths, detection_model, ocr_model_interface, device='cuda', return_cropped_images=False):
     ''' inference pipeline for detection and OCR, processing one sample at a time '''
-    ocr_results = []
+    ocr_results = {i: None for i in range(len(img_paths))}
     cropped_images = []
+    
 
-    for img_path in tqdm(img_paths):
+    for i, img_path in enumerate(tqdm(img_paths)):
         # Detection
         results = detection_model([img_path])
         logger.debug(results[0].boxes)
         detections = results[0].boxes.xyxy.detach().cpu().numpy()
         ## take bounding box with the highest confidence
         if len(detections) == 0:
-            ocr_results.append("no_detect")
+            ocr_results.update({i: ""})
             continue
         
         detections = detections[np.argmax(detections[:, -1])].reshape(1, -1)
@@ -141,13 +142,14 @@ def predict_single_sample(img_paths, detection_model, ocr_model_interface, devic
             temp_path = os.path.join(temp_dir, "cropped_image.jpg")
             Image.fromarray(cropped_image.numpy()).save(temp_path)
             ocr_out = ocr_model_interface.ocr(cropped_image=cropped_image, temp_path=temp_path)
-            ocr_results.extend(ocr_out)
+            ocr_results.update({i: ocr_out[0]})
             ## delete the .jpg file
             # os.remove(temp_path)
 
     if return_cropped_images:
         return ocr_results, cropped_images
 
+    logger.info(ocr_results)
     return ocr_results
 
 def character_error_rate(ground_truth, prediction):
