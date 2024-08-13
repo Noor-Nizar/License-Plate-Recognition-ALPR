@@ -1,19 +1,19 @@
-from ultralytics import YOLOv10
-import glob
 from PIL import Image
 from transformers import TrOCRProcessor, VisionEncoderDecoderModel
+from tqdm import tqdm
+from ultralytics import YOLO, YOLOv10
 import transformers
 import torch
+import glob
 import os
-from tqdm import tqdm
 import numpy as np
 import jiwer
-import easyocr
 
 # import easyocr
 
 from .dataset import get_dataset_loader
-from .logger_config import logger  
+from .logger_config import logger 
+from .ocr_model_interfaces import ocr_easy_interface, ocr_llm_interface, ocr_tesseract_interface
 
 def get_detection_model(path=None):
     ''' load the last trained model using modification date if path is not set'''
@@ -28,35 +28,6 @@ def get_ocr(path=None):
     processor = TrOCRProcessor.from_pretrained('microsoft/trocr-base-printed')
     model_ocr = VisionEncoderDecoderModel.from_pretrained('microsoft/trocr-base-printed')
     return processor, model_ocr
-
-class ocr_easy_interface:
-    def __init__(self, *args, **kwargs):
-        self.reader = easyocr.Reader(['en'])
-
-    def ocr(self, temp_path, *args, **kwargs):
-        outs = self.reader.readtext(temp_path)
-        if len(outs) == 0:
-            return ["no_detect"]
-        logger.debug(outs)
-        confs = [out[-1] for out in outs]
-        arg_max_conf = np.argmax(confs)
-        return [outs[arg_max_conf][-2]]
-        
-class ocr_llm_interface:
-    def __init__(self, processor, ocr_model, device):
-        self.processor = processor
-        self.ocr_model = ocr_model
-        self.device = device
-
-    def ocr(self, cropped_image, *args, **kwargs):
-        # returns = []
-        with torch.no_grad():
-            pixel_values = self.processor(images=cropped_image, return_tensors="pt").pixel_values
-            pixel_values = pixel_values.to(self.device)
-            generated_ids = self.ocr_model.generate(pixel_values)
-            generated_text = self.processor.batch_decode(generated_ids, skip_special_tokens=True)
-            # print("OCR results: ", generated_text)
-            return generated_text
 
 def predict(img_paths, detection_model, ocr_model_interface,
              device='cuda', max_batch_size=32, return_cropped_images=False):

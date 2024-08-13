@@ -37,7 +37,7 @@ class PredictionResponse(BaseModel):
     predictions: Dict[int, str] = Field(..., description="Dictionary of predicted texts (in the same order as input images)")
     cer: Optional[float] = Field(None, description="Average Character Error Rate (if ground truth is provided)")
     # id: str = Field(..., description="ID of the prediction")
-
+    
 # --- API Endpoints ---
 
 @app.post("/predict", response_model=PredictionResponse)

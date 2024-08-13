@@ -4,3 +4,5 @@
 /wandb/
 *.pyc
 /models/
+/shared/
+/shared_volume/

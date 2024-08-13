@@ -6,6 +6,9 @@ RUN apt-get update && apt-get install -y \
     git \
     libgl1-mesa-glx \
     libglib2.0-0 \
+    gcc \
+    python3-dev \
+    build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 # Set the working directory
@@ -15,6 +18,7 @@ WORKDIR /app
 COPY requirements.txt .
 
 # Install the Python dependencies
+RUN pip install --upgrade pip
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the rest of the application code into the container

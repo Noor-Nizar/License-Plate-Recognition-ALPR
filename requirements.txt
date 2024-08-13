@@ -72,3 +72,6 @@ fastapi==0.111.0
 uvicorn==0.30.1
 git+https://github.com/THU-MIG/yolov10.git
 easyocr==1.7.1
+pytesseract==0.3.10
+paddlepaddle==2.6.1
+paddleocr==2.8.1

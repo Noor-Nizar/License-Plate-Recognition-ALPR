@@ -1,0 +1,9 @@
+services:
+  api:
+    image: simple_test_12:latest
+    ports:
+      - "8000:8000"
+    volumes:
+      - type: bind
+        source: /Users/noornizar/Documents/ALPR_LP/shared
+        target: /app/shared
